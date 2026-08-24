@@ -24,9 +24,14 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
+    console.log("OPENAI STATUS:", response.status);
+    console.log("OPENAI RESPONSE:", JSON.stringify(data));
+
     if (!response.ok) {
       return res.status(response.status).json({
-        error: data.error?.message || "OpenAI API error"
+        error: data.error?.message || "OpenAI API error",
+        type: data.error?.type || null,
+        code: data.error?.code || null
       });
     }
 
@@ -35,8 +40,10 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
+    console.error("SERVER ERROR:", error);
+
     return res.status(500).json({
-      error: "Server error"
+      error: error.message || "Server error"
     });
   }
 }
