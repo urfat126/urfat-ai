@@ -1,0 +1,407 @@
+const chat = document.getElementById("chat");
+const composer = document.getElementById("composer");
+const messageInput = document.getElementById("message");
+const imageInput = document.getElementById("imageInput");
+const attachBtn = document.getElementById("attachBtn");
+const imageBtn = document.getElementById("imageBtn");
+const sendBtn = document.getElementById("sendBtn");
+const preview = document.getElementById("preview");
+const newChat = document.getElementById("newChat");
+const clearChat = document.getElementById("clearChat");
+const historyBox = document.getElementById("history");
+
+let selectedImage = null;
+
+let chats = JSON.parse(
+  localStorage.getItem("urfat-ai-chats") || "[]"
+);
+
+function escapeHTML(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function addMessage(role, text, image = null) {
+
+  const welcome = document.querySelector(".welcome");
+
+  if (welcome) {
+    welcome.remove();
+  }
+
+  const row = document.createElement("div");
+
+  row.className =
+    `message-row ${role === "user" ? "user" : "ai"}`;
+
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.textContent = role === "user" ? "Y" : "U";
+
+  const message = document.createElement("div");
+  message.className = "message";
+
+  if (text) {
+    message.innerHTML = escapeHTML(text);
+  }
+
+  if (image) {
+
+    const img = document.createElement("img");
+
+    img.src = image;
+    img.alt = "Uploaded image";
+
+    message.appendChild(img);
+  }
+
+  if (role === "user") {
+    row.appendChild(message);
+    row.appendChild(avatar);
+  } else {
+    row.appendChild(avatar);
+    row.appendChild(message);
+  }
+
+  chat.appendChild(row);
+
+  chat.scrollTop = chat.scrollHeight;
+
+  return message;
+}
+
+
+function setLoading(value) {
+  sendBtn.disabled = value;
+  imageBtn.disabled = value;
+  attachBtn.disabled = value;
+}
+
+
+function saveChat(title) {
+
+  chats.unshift({
+    title,
+    date: Date.now()
+  });
+
+  chats = chats.slice(0, 30);
+
+  localStorage.setItem(
+    "urfat-ai-chats",
+    JSON.stringify(chats)
+  );
+
+  renderHistory();
+}
+
+
+function renderHistory() {
+
+  historyBox.innerHTML = "";
+
+  chats.forEach(chatItem => {
+
+    const item = document.createElement("div");
+
+    item.className = "history-item";
+
+    item.textContent = chatItem.title;
+
+    historyBox.appendChild(item);
+  });
+}
+
+
+attachBtn.addEventListener("click", () => {
+  imageInput.click();
+});
+
+
+imageInput.addEventListener("change", () => {
+
+  const file = imageInput.files[0];
+
+  if (!file) return;
+
+  if (file.size > 10 * 1024 * 1024) {
+    alert("Please choose an image smaller than 10MB.");
+    imageInput.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+
+    selectedImage = reader.result;
+
+    preview.innerHTML = `
+      <img src="${selectedImage}" alt="Preview">
+    `;
+
+    preview.style.display = "block";
+  };
+
+  reader.readAsDataURL(file);
+});
+
+
+function clearSelectedImage() {
+
+  selectedImage = null;
+  imageInput.value = "";
+  preview.innerHTML = "";
+  preview.style.display = "none";
+}
+
+
+async function sendChat() {
+
+  const text = messageInput.value.trim();
+
+  if (!text && !selectedImage) return;
+
+  const imageToSend = selectedImage;
+
+  addMessage("user", text, imageToSend);
+
+  messageInput.value = "";
+
+  clearSelectedImage();
+
+  setLoading(true);
+
+  const aiMessage = addMessage(
+    "ai",
+    "Thinking..."
+  );
+
+  aiMessage.classList.add("loading");
+
+  try {
+
+    const response = await fetch("/api/chat", {
+
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        message: text,
+        image: imageToSend
+      })
+
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+
+    aiMessage.classList.remove("loading");
+
+    aiMessage.textContent = data.answer;
+
+    if (text) {
+      saveChat(text.slice(0, 45));
+    }
+
+  } catch (error) {
+
+    aiMessage.classList.remove("loading");
+
+    aiMessage.textContent =
+      "Error: " + error.message;
+
+  } finally {
+
+    setLoading(false);
+  }
+}
+
+
+composer.addEventListener("submit", event => {
+
+  event.preventDefault();
+
+  sendChat();
+
+});
+
+
+messageInput.addEventListener("keydown", event => {
+
+  if (event.key === "Enter" && !event.shiftKey) {
+
+    event.preventDefault();
+
+    sendChat();
+
+  }
+
+});
+
+
+imageBtn.addEventListener("click", async () => {
+
+  const prompt = messageInput.value.trim();
+
+  if (!prompt) {
+
+    alert(
+      "Write what you want to create/edit first."
+    );
+
+    messageInput.focus();
+
+    return;
+  }
+
+  const referenceImage = selectedImage;
+
+  addMessage(
+    "user",
+    prompt,
+    referenceImage
+  );
+
+  messageInput.value = "";
+
+  clearSelectedImage();
+
+  setLoading(true);
+
+  const aiMessage = addMessage(
+    "ai",
+    "Creating your image..."
+  );
+
+  aiMessage.classList.add("loading");
+
+  try {
+
+    const response = await fetch(
+      "/api/generate",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+          prompt,
+          image: referenceImage
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Image generation failed"
+      );
+    }
+
+    aiMessage.classList.remove("loading");
+
+    aiMessage.textContent = "";
+
+    const img = document.createElement("img");
+
+    img.src = data.image;
+
+    img.alt = "Generated image";
+
+    aiMessage.appendChild(img);
+
+    saveChat(
+      "Image: " + prompt.slice(0, 35)
+    );
+
+  } catch (error) {
+
+    aiMessage.classList.remove("loading");
+
+    aiMessage.textContent =
+      "Error: " + error.message;
+
+  } finally {
+
+    setLoading(false);
+  }
+
+});
+
+
+function resetChat() {
+
+  chat.innerHTML = `
+    <div class="welcome">
+
+      <div class="welcome-logo">
+        U
+      </div>
+
+      <h1>How can I help you?</h1>
+
+      <p>
+        Ask questions, upload images, or create/edit images.
+      </p>
+
+      <div class="suggestions">
+
+        <button class="suggestion">
+          Explain this image
+        </button>
+
+        <button class="suggestion">
+          Create a cinematic portrait
+        </button>
+
+        <button class="suggestion">
+          Help me with my homework
+        </button>
+
+      </div>
+
+    </div>
+  `;
+
+  attachSuggestionEvents();
+}
+
+
+newChat.addEventListener("click", resetChat);
+
+clearChat.addEventListener("click", resetChat);
+
+
+function attachSuggestionEvents() {
+
+  document
+    .querySelectorAll(".suggestion")
+    .forEach(button => {
+
+      button.addEventListener("click", () => {
+
+        messageInput.value =
+          button.textContent.trim();
+
+        messageInput.focus();
+
+      });
+
+    });
+
+}
+
+
+renderHistory();
+attachSuggestionEvents();
