@@ -78,6 +78,7 @@ main {
   border: 1px solid #ccc;
   border-radius: 10px;
   font-size: 16px;
+  min-width: 0;
 }
 
 #sendButton {
@@ -97,5 +98,13 @@ main {
 @media (max-width: 600px) {
   .message {
     max-width: 90%;
+  }
+
+  .input-area {
+    padding: 10px;
+  }
+
+  #sendButton {
+    padding: 0 15px;
   }
 }
